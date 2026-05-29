@@ -1016,3 +1016,378 @@ def _completion_chart_premium(summary: pd.DataFrame):
     chart.bars[0].fillColor = colors.HexColor('#172B85')
     d.add(chart)
     return d
+
+# ===== PRO 4.0 FIX10: paleta institucional y gráficas sin traslapes =====
+BRAND_BLUE = '#0f1c75'
+BRAND_SKY = '#1c73f5'
+BRAND_GREEN = '#00ab0d'
+BRAND_YELLOW = '#ffb500'
+BRAND_TEXT = '#263238'
+BRAND_LIGHT = '#F6F8FC'
+BRAND_GRID = '#D9E2F3'
+BRAND_RED_SOFT = '#e24a4a'
+
+
+def _premium_styles():
+    styles = getSampleStyleSheet()
+    def _add(name, **kwargs):
+        if name in styles.byName:
+            return
+        styles.add(ParagraphStyle(name=name, **kwargs))
+    _add('CoverTitlePremium', fontSize=26, leading=30, alignment=1, textColor=colors.HexColor(BRAND_BLUE), fontName='Helvetica-Bold')
+    _add('CoverSubtitlePremium', fontSize=12.5, leading=16, alignment=1, textColor=colors.HexColor(BRAND_TEXT))
+    _add('SectionPremium', fontSize=14, leading=17, textColor=colors.HexColor(BRAND_BLUE), fontName='Helvetica-Bold', spaceBefore=9, spaceAfter=7)
+    _add('BodyPremium', fontSize=8.7, leading=11.5, textColor=colors.HexColor(BRAND_TEXT))
+    _add('SmallPremium', fontSize=7.2, leading=9.4, textColor=colors.HexColor(BRAND_TEXT))
+    _add('TinyPremium', fontSize=6.4, leading=7.8, textColor=colors.HexColor(BRAND_TEXT))
+    _add('KpiTitle', fontSize=7.0, leading=8.2, alignment=1, textColor=colors.white, fontName='Helvetica-Bold')
+    _add('KpiValue', fontSize=14, leading=16, alignment=1, textColor=colors.HexColor(BRAND_BLUE), fontName='Helvetica-Bold')
+    return styles
+
+
+def _executive_page(canvas, doc):
+    canvas.saveState()
+    w, h = landscape(letter)
+    canvas.setFillColor(colors.HexColor(BRAND_BLUE))
+    canvas.rect(0, h-0.20*inch, w, 0.20*inch, stroke=0, fill=1)
+    canvas.setFillColor(colors.HexColor(BRAND_GREEN))
+    canvas.rect(0, h-0.28*inch, w, 0.08*inch, stroke=0, fill=1)
+    canvas.setFont('Helvetica', 8)
+    canvas.setFillColor(colors.HexColor('#6c757d'))
+    canvas.drawString(0.35 * inch, 0.24 * inch, f'Desarrollador: {DEV}')
+    canvas.drawRightString(w - 0.35 * inch, 0.24 * inch, f'Página {doc.page}')
+    canvas.restoreState()
+
+
+def _kpi_cards(data, styles):
+    row_titles, row_values = [], []
+    for title, val, bg in data:
+        row_titles.append(Paragraph(str(title), styles['KpiTitle']))
+        row_values.append(Paragraph(str(val), styles['KpiValue']))
+    t = Table([row_titles, row_values], colWidths=[1.18*inch]*len(data), rowHeights=[0.34*inch, 0.46*inch])
+    style = [
+        ('GRID',(0,0),(-1,-1),0.35,colors.HexColor(BRAND_GRID)),
+        ('BACKGROUND',(0,1),(-1,1),colors.HexColor(BRAND_LIGHT)),
+        ('VALIGN',(0,0),(-1,-1),'MIDDLE'),
+        ('ALIGN',(0,0),(-1,-1),'CENTER'),
+    ]
+    for i, (_, _, bg) in enumerate(data):
+        style.append(('BACKGROUND',(i,0),(i,0),colors.HexColor(bg)))
+    t.setStyle(TableStyle(style))
+    return t
+
+
+def _box_wrap(inner, title=None, width=4.8*inch):
+    data = []
+    if title:
+        data.append([Paragraph(f'<b>{title}</b>', _premium_styles()['SectionPremium'])])
+    data.append([inner])
+    t = Table(data, colWidths=[width])
+    t.setStyle(TableStyle([
+        ('BOX',(0,0),(-1,-1),0.35,colors.HexColor(BRAND_GRID)),
+        ('BACKGROUND',(0,0),(-1,0),colors.white),
+        ('VALIGN',(0,0),(-1,-1),'TOP'),
+        ('LEFTPADDING',(0,0),(-1,-1),8),('RIGHTPADDING',(0,0),(-1,-1),8),('TOPPADDING',(0,0),(-1,-1),8),('BOTTOMPADDING',(0,0),(-1,-1),8),
+    ]))
+    return t
+
+
+def _risk_pie_brand(summary: pd.DataFrame):
+    from reportlab.graphics.shapes import Drawing, String, Rect
+    from reportlab.graphics.charts.piecharts import Pie
+    d = Drawing(390, 215)
+    d.add(String(12, 195, 'Distribución del riesgo integral', fontSize=12, fillColor=colors.HexColor(BRAND_BLUE), fontName='Helvetica-Bold'))
+    counts = _risk_counts(summary)
+    vals = [counts.get('Bajo',0), counts.get('Medio',0), counts.get('Alto',0)]
+    total = sum(vals)
+    if total == 0:
+        d.add(String(40, 100, 'Sin datos disponibles', fontSize=9, fillColor=colors.grey))
+        return d
+    pie = Pie()
+    pie.x = 18; pie.y = 30; pie.width = 150; pie.height = 150
+    pie.data = vals
+    pie.labels = ['','','']
+    pie.sideLabels = False
+    pie.simpleLabels = False
+    pie.slices[0].fillColor = colors.HexColor(BRAND_GREEN)
+    pie.slices[1].fillColor = colors.HexColor(BRAND_YELLOW)
+    pie.slices[2].fillColor = colors.HexColor(BRAND_BLUE)
+    pie.slices.strokeColor = colors.white
+    pie.slices.strokeWidth = 1
+    d.add(pie)
+    legend = [
+        ('Bajo', BRAND_GREEN, vals[0], 'Seguimiento ordinario'),
+        ('Medio', BRAND_YELLOW, vals[1], 'Revisión preventiva'),
+        ('Alto', BRAND_BLUE, vals[2], 'Intervención prioritaria'),
+    ]
+    y = 155
+    for name, col, v, meaning in legend:
+        d.add(Rect(205, y-5, 11, 11, fillColor=colors.HexColor(col), strokeColor=None))
+        d.add(String(222, y-3, f'{name}: {v} estudiante(s) ({(v/total)*100:.1f}%)', fontSize=8, fillColor=colors.HexColor(BRAND_TEXT), fontName='Helvetica-Bold'))
+        d.add(String(222, y-16, meaning, fontSize=7, fillColor=colors.HexColor('#5b6570')))
+        y -= 42
+    pred = max(zip(['Bajo','Medio','Alto'], vals), key=lambda x: x[1])[0]
+    d.add(String(18, 12, f'Lectura: predomina el riesgo {pred.lower()} en el corte analizado.', fontSize=7.5, fillColor=colors.HexColor(BRAND_TEXT)))
+    return d
+
+
+def _short_course_name(name: str) -> str:
+    txt = str(name)
+    repl = {
+        'Fundamentos de la Comunicación': 'Fund. Comunicación',
+        'Iniciando tu Experiencia Virtual': 'Exp. Virtual',
+        'Matemáticas': 'Matemáticas'
+    }
+    for k,v in repl.items():
+        txt = txt.replace(k,v)
+    return txt[:18]
+
+
+def _course_risk_chart_brand(summary: pd.DataFrame):
+    from reportlab.graphics.shapes import Drawing, String
+    from reportlab.graphics.charts.barcharts import VerticalBarChart
+    d = Drawing(430, 215)
+    d.add(String(12, 195, 'Riesgo alto y medio por curso general', fontSize=12, fillColor=colors.HexColor(BRAND_BLUE), fontName='Helvetica-Bold'))
+    if summary is None or summary.empty or 'curso_general' not in summary.columns:
+        d.add(String(40, 100, 'Sin datos por curso', fontSize=9, fillColor=colors.grey))
+        return d
+    tmp = summary.copy()
+    if 'riesgo_integral' not in tmp.columns:
+        tmp['riesgo_integral'] = 'Sin clasificar'
+    g = tmp.groupby('curso_general').agg(
+        alto=('riesgo_integral', lambda s: int((s == 'Alto').sum())),
+        medio=('riesgo_integral', lambda s: int((s == 'Medio').sum())),
+        total=('riesgo_integral', 'count')
+    ).reset_index().sort_values(['alto','medio','total'], ascending=False).head(6)
+    if g.empty:
+        d.add(String(40, 100, 'Sin datos por curso', fontSize=9, fillColor=colors.grey))
+        return d
+    chart = VerticalBarChart()
+    chart.x = 32; chart.y = 48; chart.height = 118; chart.width = 285
+    chart.data = [g['alto'].astype(int).tolist(), g['medio'].astype(int).tolist()]
+    chart.categoryAxis.categoryNames = [_short_course_name(x) for x in g['curso_general'].tolist()]
+    chart.categoryAxis.labels.angle = 18
+    chart.categoryAxis.labels.fontSize = 6.5
+    chart.valueAxis.valueMin = 0
+    chart.valueAxis.labels.fontSize = 6.5
+    chart.bars[0].fillColor = colors.HexColor(BRAND_BLUE)
+    chart.bars[1].fillColor = colors.HexColor(BRAND_YELLOW)
+    chart.barSpacing = 6
+    chart.groupSpacing = 12
+    d.add(chart)
+    total_alto = int(g['alto'].sum())
+    total_medio = int(g['medio'].sum())
+    d.add(String(330, 155, 'Leyenda', fontSize=8, fillColor=colors.HexColor(BRAND_BLUE), fontName='Helvetica-Bold'))
+    d.add(String(330, 140, '■ Riesgo alto', fontSize=7.8, fillColor=colors.HexColor(BRAND_BLUE)))
+    d.add(String(330, 126, '■ Riesgo medio', fontSize=7.8, fillColor=colors.HexColor(BRAND_YELLOW)))
+    d.add(String(330, 100, f'Total alto: {total_alto}', fontSize=7.5, fillColor=colors.HexColor(BRAND_TEXT)))
+    d.add(String(330, 88, f'Total medio: {total_medio}', fontSize=7.5, fillColor=colors.HexColor(BRAND_TEXT)))
+    d.add(String(330, 62, 'Lectura:', fontSize=7.5, fillColor=colors.HexColor(BRAND_BLUE), fontName='Helvetica-Bold'))
+    top_course = str(g.iloc[0]['curso_general'])
+    d.add(String(330, 50, _short_course_name(top_course), fontSize=7.0, fillColor=colors.HexColor(BRAND_TEXT)))
+    d.add(String(330, 39, 'concentra la mayor carga', fontSize=7.0, fillColor=colors.HexColor(BRAND_TEXT)))
+    d.add(String(330, 28, 'de riesgo crítico.', fontSize=7.0, fillColor=colors.HexColor(BRAND_TEXT)))
+    return d
+
+
+def _advance_chart_brand(summary: pd.DataFrame):
+    from reportlab.graphics.shapes import Drawing, String
+    from reportlab.graphics.charts.barcharts import HorizontalBarChart
+    d = Drawing(430, 220)
+    d.add(String(12, 198, 'Porcentaje de avance actual de entregables', fontSize=12, fillColor=colors.HexColor(BRAND_BLUE), fontName='Helvetica-Bold'))
+    if summary is None or summary.empty:
+        d.add(String(40, 100, 'Sin datos de avance', fontSize=9, fillColor=colors.grey))
+        return d
+    ser = pd.to_numeric(summary['porcentaje_avance'], errors='coerce').fillna(0) if 'porcentaje_avance' in summary.columns else pd.Series([0]*len(summary))
+    bins = pd.cut(ser, bins=[-0.1,24.999,49.999,79.999,100000], labels=['0-24%','25-49%','50-79%','80-100%'])
+    counts = bins.value_counts().reindex(['0-24%','25-49%','50-79%','80-100%'], fill_value=0)
+    chart = HorizontalBarChart()
+    chart.x = 118; chart.y = 52; chart.height = 110; chart.width = 210
+    chart.data = [counts.astype(int).tolist()]
+    chart.categoryAxis.categoryNames = ['0-24% Muy bajo','25-49% Inicial','50-79% En progreso','80-100% Al día']
+    chart.categoryAxis.labels.fontSize = 7
+    chart.valueAxis.valueMin = 0
+    chart.valueAxis.labels.fontSize = 6.5
+    chart.bars[0].fillColor = colors.HexColor(BRAND_SKY)
+    d.add(chart)
+    total = max(int(counts.sum()),1)
+    lines = [
+        f'0-24%: {int(counts.iloc[0])} est. ({counts.iloc[0]/total:.1%}) requieren atención inmediata.',
+        f'25-49%: {int(counts.iloc[1])} est. ({counts.iloc[1]/total:.1%}) con avance inicial.',
+        f'50-79%: {int(counts.iloc[2])} est. ({counts.iloc[2]/total:.1%}) muestran progreso parcial.',
+        f'80-100%: {int(counts.iloc[3])} est. ({counts.iloc[3]/total:.1%}) están al día o casi completos.',
+    ]
+    y = 168
+    for i, txt in enumerate(lines):
+        d.add(String(12, y-(i*14), txt[:88], fontSize=7.2, fillColor=colors.HexColor(BRAND_TEXT)))
+    return d
+
+
+def _executive_findings(summary: pd.DataFrame, styles) -> Table:
+    total = len(summary) if summary is not None else 0
+    counts = _risk_counts(summary)
+    high = counts.get('Alto', 0)
+    med = counts.get('Medio', 0)
+    pct_high = (high / total * 100) if total else 0
+    finalizados = int(summary['estado_finalizacion'].astype(str).eq('Finalizado o al día por entregas').sum()) if total and 'estado_finalizacion' in summary.columns else 0
+    no_reg = int(summary['clasificacion_registro'].astype(str).str.contains('no registrado|pendiente|incompleto', case=False, na=False).sum()) if total and 'clasificacion_registro' in summary.columns else 0
+    pendientes = int(_num_sum(summary, 'pendientes_actuales') if total and 'pendientes_actuales' in summary.columns else _num_sum(summary, 'pendientes')) if total else 0
+    avg_adv = _num_mean(summary, 'porcentaje_avance') if total else 0
+    rows = [
+        ['Hallazgo ejecutivo', 'Lectura operativa'],
+        ['Riesgo alto', f'{high} de {total} estudiantes ({pct_high:.1f}%) requieren priorización inmediata.'],
+        ['Riesgo medio', f'{med} estudiantes requieren seguimiento preventivo para evitar escalamiento.'],
+        ['Avance actual', f'El porcentaje promedio de avance actual es {avg_adv:.1f}% considerando las actividades vigentes.'],
+        ['Entregables', f'{finalizados} estudiantes aparecen finalizados o al día; no deben interpretarse como abandono solo por baja conexión.'],
+        ['Registros pendientes', f'{no_reg} estudiantes presentan información incompleta o no registrada y deben validarse manualmente.'],
+        ['Pendientes actuales', f'Se detectan {pendientes} pendientes actuales acumulados en el corte del informe.'],
+    ]
+    data = [[rows[0][0], rows[0][1]]] + [[_p(c, styles['SmallPremium'], 36), _p(v, styles['SmallPremium'], 150)] for c, v in rows[1:]]
+    t = Table(data, colWidths=[1.75*inch, 7.45*inch])
+    t.setStyle(TableStyle([
+        ('BACKGROUND',(0,0),(-1,0),colors.HexColor(BRAND_BLUE)),('TEXTCOLOR',(0,0),(-1,0),colors.white),
+        ('GRID',(0,0),(-1,-1),0.25,colors.HexColor(BRAND_GRID)),
+        ('VALIGN',(0,0),(-1,-1),'TOP'),
+        ('ROWBACKGROUNDS',(0,1),(-1,-1),[colors.white, colors.HexColor(BRAND_LIGHT)]),
+        ('FONTNAME',(0,0),(-1,0),'Helvetica-Bold')
+    ]))
+    return t
+
+
+def _recommendations(summary: pd.DataFrame, styles):
+    recs = [
+        'Priorizar contacto con estudiantes en riesgo alto y con pendientes actuales o entregas atrasadas.',
+        'Usar los casos de riesgo medio como foco preventivo para evitar que evolucionen a criticidad.',
+        'Validar manualmente en Canvas los registros pendientes o incompletos antes de escalar el caso.',
+        'No clasificar como abandono a estudiantes finalizados o al día sin revisar primero sus entregables.',
+    ]
+    data = [['Recomendación operativa'], *[[r] for r in recs]]
+    t = Table([[ _p(x[0], styles['SmallPremium'], 165)] for x in data], colWidths=[9.25*inch])
+    t.setStyle(TableStyle([
+        ('BACKGROUND',(0,0),(-1,0),colors.HexColor(BRAND_GREEN)),('TEXTCOLOR',(0,0),(-1,0),colors.white),
+        ('GRID',(0,0),(-1,-1),0.25,colors.HexColor(BRAND_GRID)),
+        ('ROWBACKGROUNDS',(0,1),(-1,-1),[colors.white, colors.HexColor(BRAND_LIGHT)]),
+        ('VALIGN',(0,0),(-1,-1),'TOP')
+    ]))
+    return t
+
+
+def pdf_bytes(summary: pd.DataFrame, course_name: str, section_name: str, generated_by: str, analysis_date: str, logo_ave='assets/logo_ave.png', logo_uvg='assets/logo_uvg.png') -> bytes:
+    if summary is None:
+        summary = pd.DataFrame()
+    summary = summary.copy()
+    styles = _premium_styles()
+    curso_label = _course_label_from_summary(summary, course_name)
+    total = len(summary)
+    counts = _risk_counts(summary)
+    cursos_generales = summary['curso_general'].nunique() if total and 'curso_general' in summary.columns else 1
+    secciones = summary['curso_canvas'].nunique() if total and 'curso_canvas' in summary.columns else section_name
+    finalizados = int(summary['estado_finalizacion'].astype(str).eq('Finalizado o al día por entregas').sum()) if total and 'estado_finalizacion' in summary.columns else 0
+    no_reg = int(summary['clasificacion_registro'].astype(str).str.contains('no registrado|pendiente|incompleto', case=False, na=False).sum()) if total and 'clasificacion_registro' in summary.columns else 0
+    avance_prom = f"{_num_mean(summary, 'porcentaje_avance'):.1f}%" if total else '0.0%'
+    pendientes = int(_num_sum(summary, 'pendientes_actuales') if total and 'pendientes_actuales' in summary.columns else _num_sum(summary, 'pendientes')) if total else 0
+
+    bio = BytesIO()
+    doc = SimpleDocTemplate(bio, pagesize=landscape(letter), rightMargin=30, leftMargin=30, topMargin=34, bottomMargin=30)
+    story = []
+
+    logo_row = [
+        Image(logo_ave, width=1.8*inch, height=0.82*inch) if Path(logo_ave).exists() else '',
+        Paragraph('Informe Ejecutivo de Seguimiento Académico', styles['CoverTitlePremium']),
+        Image(logo_uvg, width=0.95*inch, height=0.95*inch) if Path(logo_uvg).exists() else ''
+    ]
+    ht = Table([logo_row], colWidths=[2.1*inch, 6.15*inch, 1.35*inch])
+    ht.setStyle(TableStyle([('VALIGN',(0,0),(-1,-1),'MIDDLE'), ('ALIGN',(0,0),(-1,-1),'CENTER')]))
+    story += [ht, Spacer(1, 8)]
+    story.append(Paragraph(f'<b>Curso general analizado:</b> {curso_label}', styles['CoverSubtitlePremium']))
+    story.append(Paragraph(f'<b>Alcance:</b> {cursos_generales} curso(s) general(es) | {secciones} curso(s)/sección(es) Canvas | {total} estudiante(s) detectado(s)', styles['CoverSubtitlePremium']))
+    story.append(Paragraph(f'<b>Fecha de análisis:</b> {analysis_date} &nbsp;&nbsp;&nbsp; <b>Generado por:</b> {generated_by or "No especificado"}', styles['CoverSubtitlePremium']))
+    story += [Spacer(1, 12)]
+
+    story.append(Paragraph('Resumen general', styles['SectionPremium']))
+    story.append(Paragraph('Este informe consolida actividad de Canvas, entregables, estudiantes con información pendiente y una clasificación de riesgo ajustada para apoyar la toma de decisiones de los asesores AVE.', styles['BodyPremium']))
+    story += [Spacer(1, 8)]
+    cards = _kpi_cards([
+        ('Cursos generales', cursos_generales, BRAND_BLUE),
+        ('Estudiantes', total, BRAND_SKY),
+        ('Riesgo alto', counts.get('Alto',0), BRAND_BLUE),
+        ('Riesgo medio', counts.get('Medio',0), BRAND_YELLOW),
+        ('Finalizados / al día', finalizados, BRAND_GREEN),
+        ('Registros pendientes', no_reg, BRAND_SKY),
+        ('Avance promedio', avance_prom, BRAND_BLUE),
+        ('Pendientes actuales', pendientes, BRAND_YELLOW),
+    ], styles)
+    story += [cards, Spacer(1, 12)]
+    story.append(_executive_findings(summary, styles))
+
+    story.append(PageBreak())
+    story.append(Paragraph('Gráficos de sustento del análisis', styles['SectionPremium']))
+    gt = Table([
+        [_box_wrap(_risk_pie_brand(summary), width=4.6*inch), _box_wrap(_course_risk_chart_brand(summary), width=4.6*inch)],
+        [_box_wrap(_advance_chart_brand(summary), width=4.6*inch), _box_wrap(_recommendations(summary, styles), width=4.6*inch)],
+    ], colWidths=[4.75*inch, 4.75*inch], rowHeights=[2.9*inch, 3.0*inch])
+    gt.setStyle(TableStyle([('VALIGN',(0,0),(-1,-1),'TOP')]))
+    story.append(gt)
+
+    if total and 'curso_general' in summary.columns:
+        story.append(PageBreak())
+        story.append(Paragraph('Resumen global por curso general', styles['SectionPremium']))
+        tmp = summary.copy()
+        for col in ['pendientes_actuales','pendientes','porcentaje_avance','horas_sin_actividad','atrasadas']:
+            if col in tmp.columns:
+                tmp[col] = pd.to_numeric(tmp[col], errors='coerce').fillna(0)
+        if 'pendientes_actuales' not in tmp.columns:
+            tmp['pendientes_actuales'] = tmp['pendientes'] if 'pendientes' in tmp.columns else 0
+        if 'porcentaje_avance' not in tmp.columns: tmp['porcentaje_avance'] = 0
+        if 'horas_sin_actividad' not in tmp.columns: tmp['horas_sin_actividad'] = 0
+        if 'atrasadas' not in tmp.columns: tmp['atrasadas'] = 0
+        g = tmp.groupby('curso_general').agg(
+            estudiantes=('user_id','count'),
+            riesgo_alto=('riesgo_integral', lambda s: int((s == 'Alto').sum()) if 'riesgo_integral' in tmp else 0),
+            riesgo_medio=('riesgo_integral', lambda s: int((s == 'Medio').sum()) if 'riesgo_integral' in tmp else 0),
+            finalizados=('estado_finalizacion', lambda s: int((s == 'Finalizado o al día por entregas').sum()) if 'estado_finalizacion' in tmp else 0),
+            registros_pendientes=('clasificacion_registro', lambda s: int(pd.Series(s).astype(str).str.contains('no registrado|pendiente|incompleto', case=False, na=False).sum()) if 'clasificacion_registro' in tmp else 0),
+            pendientes_actuales=('pendientes_actuales','sum'), atrasadas=('atrasadas','sum'), avance_prom=('porcentaje_avance','mean'), horas_sin_act_prom=('horas_sin_actividad','mean'),
+        ).reset_index().sort_values(['riesgo_alto','riesgo_medio','pendientes_actuales'], ascending=False)
+        g['avance_prom'] = pd.to_numeric(g['avance_prom'], errors='coerce').fillna(0).round(1).astype(str) + '%'
+        g['horas_sin_act_prom'] = pd.to_numeric(g['horas_sin_act_prom'], errors='coerce').fillna(0).round(1).astype(str)
+        for c in ['pendientes_actuales','atrasadas']:
+            g[c] = pd.to_numeric(g[c], errors='coerce').fillna(0).astype(int)
+        cols = ['curso_general','estudiantes','riesgo_alto','riesgo_medio','finalizados','registros_pendientes','pendientes_actuales','atrasadas','avance_prom','horas_sin_act_prom']
+        heads = ['Curso general','Est.','Alto','Medio','Final./día','Reg. pend.','Pend. act.','Atr.','Avance','Hrs sin act. prom.']
+        data = [heads]
+        for _, r in g[cols].head(12).iterrows():
+            data.append([_p(r['curso_general'], styles['TinyPremium'], 38), *[str(r[c]) for c in cols[1:]]])
+        t = Table(data, repeatRows=1, colWidths=[2.1*inch,0.45*inch,0.45*inch,0.5*inch,0.62*inch,0.65*inch,0.65*inch,0.42*inch,0.58*inch,0.78*inch])
+        t.setStyle(TableStyle([('BACKGROUND',(0,0),(-1,0),colors.HexColor(BRAND_BLUE)),('TEXTCOLOR',(0,0),(-1,0),colors.white),('GRID',(0,0),(-1,-1),0.22,colors.lightgrey),('FONTSIZE',(0,0),(-1,-1),6.2),('VALIGN',(0,0),(-1,-1),'TOP'),('ROWBACKGROUNDS',(0,1),(-1,-1),[colors.white, colors.HexColor(BRAND_LIGHT)])]))
+        story.append(t)
+
+    story.append(PageBreak())
+    story.append(Paragraph('Casos prioritarios y acciones recomendadas', styles['SectionPremium']))
+    if summary.empty:
+        story.append(Paragraph('No hay estudiantes para mostrar.', styles['BodyPremium']))
+    else:
+        view = summary.copy()
+        needed = ['curso_general','estudiante','correo','clasificacion_registro','estado_finalizacion','horas_sin_actividad','pendientes_actuales','atrasadas','porcentaje_avance','riesgo_integral','accion_recomendada','puntaje_riesgo']
+        for c in needed:
+            if c not in view.columns: view[c] = '' if c not in ['puntaje_riesgo','horas_sin_actividad','pendientes_actuales','atrasadas','porcentaje_avance'] else 0
+        for c in ['puntaje_riesgo','horas_sin_actividad','pendientes_actuales','atrasadas','porcentaje_avance']:
+            view[c] = pd.to_numeric(view[c], errors='coerce').fillna(0)
+        risk_ord = {'Alto': 0, 'Medio': 1, 'Bajo': 2}
+        view['_risk_order'] = view['riesgo_integral'].map(risk_ord).fillna(3)
+        mask = (view['riesgo_integral'].isin(['Alto','Medio'])) | (~view['clasificacion_registro'].astype(str).eq('Activo analizado'))
+        view = view[mask].sort_values(['_risk_order','puntaje_riesgo','pendientes_actuales','horas_sin_actividad'], ascending=[True,False,False,False]).head(38)
+        if view.empty:
+            view = summary.head(25)
+        heads = ['Curso','Estudiante','Correo','Registro','Estado','Hrs','Pend.','Atr.','Av.%','Riesgo','Acción recomendada']
+        data = [heads]
+        for _, r in view.iterrows():
+            data.append([_p(r.get('curso_general',''), styles['TinyPremium'], 22), _p(r.get('estudiante',''), styles['TinyPremium'], 25), _p(r.get('correo',''), styles['TinyPremium'], 24), _p(r.get('clasificacion_registro',''), styles['TinyPremium'], 22), _p(r.get('estado_finalizacion',''), styles['TinyPremium'], 24), str(round(float(r.get('horas_sin_actividad',0)),1)), str(int(float(r.get('pendientes_actuales',0)))), str(int(float(r.get('atrasadas',0)))), str(round(float(r.get('porcentaje_avance',0)),1)), _p(r.get('riesgo_integral',''), styles['TinyPremium'], 8), _p(r.get('accion_recomendada',''), styles['TinyPremium'], 48)])
+        t = Table(data, repeatRows=1, colWidths=[0.92*inch,1.05*inch,1.0*inch,0.88*inch,0.9*inch,0.36*inch,0.36*inch,0.3*inch,0.34*inch,0.42*inch,2.05*inch])
+        t.setStyle(TableStyle([('BACKGROUND',(0,0),(-1,0),colors.HexColor(BRAND_BLUE)),('TEXTCOLOR',(0,0),(-1,0),colors.white),('GRID',(0,0),(-1,-1),0.2,colors.lightgrey),('FONTSIZE',(0,0),(-1,-1),5.8),('VALIGN',(0,0),(-1,-1),'TOP'),('ROWBACKGROUNDS',(0,1),(-1,-1),[colors.white, colors.HexColor(BRAND_LIGHT)])]))
+        story.append(t)
+    story += [Spacer(1, 8)]
+    story.append(Paragraph('Nota metodológica: la clasificación se basa en información disponible desde Canvas por medio del token autorizado. Los resultados deben utilizarse como insumo de asesoría académica, seguimiento preventivo y documentación operativa; no sustituyen la revisión pedagógica ni la comunicación directa con el estudiante.', styles['SmallPremium']))
+
+    doc.build(story, onFirstPage=_executive_page, onLaterPages=_executive_page)
+    return bio.getvalue()
